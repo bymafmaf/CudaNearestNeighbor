@@ -7,14 +7,18 @@
 
 #include <fstream>
 
-const int BLOCKS = 1000;
+const int BLOCKS = 19000;
 const int DIMENSIONS = 16;
+const int TESTLINES = 1000;
 using namespace::std;
 
-int inputLines[1000][16];
-string filename = "test.txt";
+unsigned int inputLines[TESTLINES][DIMENSIONS];
+unsigned int trainLines[BLOCKS][DIMENSIONS];
 
-void parseLine(string line, int lineArr[]) {
+string testFilename = "test.txt";
+string trainFilename = "train.txt";
+
+void parseLine(string line, unsigned int lineArr[]) {
   int start=0;
   int numIndex = 0;
   for (size_t i = 0; i < line.length(); i++) {
@@ -27,27 +31,34 @@ void parseLine(string line, int lineArr[]) {
   lineArr[numIndex] = stoi(line.substr(start, line.length()-start));
 }
 
-void readFile(){
+void readFile(int num, string filename){
   ifstream inputFile;
   inputFile.open(filename.c_str());
   int ind = 0;
   string line;
   while (getline(inputFile, line)) {
-    parseLine(line, inputLines[ind]);
+    if (num == 0) {
+      parseLine(line, inputLines[ind]);
+    }
+    else {
+      parseLine(line, trainLines[ind]);
+    }
     ind++;
   }
 }
 
 int main(){
-  readFile();
+  readFile(0, testFilename);
+  readFile(1, trainFilename);
+
   unsigned int result[BLOCKS][DIMENSIONS];
   unsigned int distances[BLOCKS];
 
-  const int selfIndex = 0;
+  const int selfIndex = 1;
 
   for (size_t i = 0; i < BLOCKS; i++) {
     for (size_t j = 0; j < DIMENSIONS; j++) {
-      int diff = inputLines[i][j] - inputLines[selfIndex][j];
+      int diff = trainLines[i][j] - inputLines[selfIndex][j];
       result[i][j] = diff * diff;
     }
   }
@@ -69,11 +80,6 @@ int main(){
   }
   cout << "Closest to index " << selfIndex << " is min: " << min << " index: " << minIndex << endl;
 
-  cout << "Diff squares between " << selfIndex << " and 1" << endl;
-  for (size_t i = 0; i < 16; i++) {
-    cout << result[1][i] << ",";
-  }
-  cout<<endl;
 
   return 0;
 }
