@@ -38,39 +38,40 @@ void readFile(){
   }
 }
 
-// __global__
-// calculateDifference(int *all, int *diffSquare, int id){
-//   int self = all[id][threadIdx.x];
-//   int other = all[blockIdx.x][threadIdx.x];
-//
-//   int result = other - self;
-//   diffSquare[threadIdx.x] += result * result;
-// }
+__global__
+void calculateDifference(int *all, int *diffSquare, int id){
+  int self = all[id*DIMENSIONS + threadIdx.x];
+  int other = all[blockIdx.x*DIMENSIONS + threadIdx.x];
+
+  int result = other - self;
+  diffSquare[blockIdx.x*DIMENSIONS + threadIdx.x] = result * result;
+}
 
 int main(int argc, char *argv[]) {
   readFile();
-  // int* d_inputLines;
-  // int* d_diffLines;
-  // int* diffLines;
-  // int lineSize = DIMENSIONS * sizeof(int);
-  // int allLinesSize = BLOCKS * lineSize;
-  //
-  // diffLines = (int *)malloc(allLinesSize);
-  // cudaMalloc((void **)&d_inputLines, allLinesSize);
-  // cudaMalloc((void **)&d_diffLines, allLinesSize);
-  //
-  // cudaMemcpy(d_inputLines, inputLines, allLinesSize, cudaMemcpyHostToDevice);
-  //
-  // calculateDifference<<<BLOCKS, DIMENSIONS>>>(d_inputLines, d_diffLines, 0);
-  //
-  // cudaMemcpy(diffLines, d_diffLines, allLinesSize, cudaMemcpyDeviceToHost);
-  //
-  // for (size_t i = 0; i < 16; i++) {
-  //   cout << diffLines[0][i] << ",";
-  // }
-  // cout << endl;
-  //
-  // free(diffLines);
-  // cudaFree(d_diffLines); cudaFree(d_inputLines);
+  int* d_inputLines;
+  int* d_diffLines;
+  int* diffLines;
+  int lineSize = DIMENSIONS * sizeof(int);
+  int allLinesSize = BLOCKS * lineSize;
+
+  diffLines = (int *)malloc(allLinesSize);
+  cudaMalloc((void **)&d_inputLines, allLinesSize);
+  cudaMalloc((void **)&d_diffLines, allLinesSize);
+
+  cudaMemcpy(d_inputLines, inputLines, allLinesSize, cudaMemcpyHostToDevice);
+
+  calculateDifference<<<BLOCKS, DIMENSIONS>>>(d_inputLines, d_diffLines, 0);
+
+  cudaMemcpy(diffLines, d_diffLines, allLinesSize, cudaMemcpyDeviceToHost);
+
+  cout << "diff squares between 0 and 1" << endl;
+  for (size_t i = 0; i < DIMENSIONS; i++) {
+    cout << diffLines[i+16] << ",";
+  }
+  cout << endl;
+
+  free(diffLines);
+  cudaFree(d_diffLines); cudaFree(d_inputLines);
   return 1;
 }
