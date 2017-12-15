@@ -14,14 +14,14 @@ const int BLOCKS = 19000;
 const int DIMENSIONS = 16;
 const int TESTLINES = 1000;
 
-unsigned int testLines[TESTLINES*DIMENSIONS];
-unsigned int trainLines[BLOCKS*DIMENSIONS];
+unsigned short int testLines[TESTLINES*DIMENSIONS];
+unsigned short int trainLines[BLOCKS*DIMENSIONS];
 
 string testFilename = "test.txt";
 string trainFilename = "train.txt";
 string outputFilename = "myout.txt";
 
-void parseLine(string line, int startIndex, unsigned int* arr) {
+void parseLine(string line, int startIndex, unsigned short int* arr) {
   int start=0;
   int numIndex = startIndex;
   for (size_t i = 0; i < line.length(); i++) {
@@ -34,7 +34,7 @@ void parseLine(string line, int startIndex, unsigned int* arr) {
   arr[numIndex] = stoi(line.substr(start, line.length()-start));
 }
 
-void readFile(string filename, unsigned int* arr){
+void readFile(string filename, unsigned short int* arr){
   ifstream inputFile;
   inputFile.open(filename.c_str());
   int ind = 0;
@@ -46,34 +46,31 @@ void readFile(string filename, unsigned int* arr){
 }
 
 __global__
-void calculateDifference(int *trainLines, int *diffSquare, int *testLines, int id){
+void calculateDifference(short int *trainLines,unsigned int *diffSquare, short int *testLines, short int id){
   __shared__ unsigned int s_diffSquare;
   s_diffSquare = 0;
   __syncthreads();
-  // TODO: use shared memory for testLines
-  int other = testLines[id*DIMENSIONS + threadIdx.x];
-  int self = trainLines[blockIdx.x*DIMENSIONS + threadIdx.x];
+  short int other = testLines[id*DIMENSIONS + threadIdx.x];
+  short int self = trainLines[blockIdx.x*DIMENSIONS + threadIdx.x];
 
-  unsigned int result = other - self;
+  int result = other - self;
 
   atomicAdd(&s_diffSquare, result * result);
-  // //s_diffSquare[blockIdx.x] += result;
-  //
   __syncthreads();
   if (threadIdx.x % DIMENSIONS == 0) {
     diffSquare[blockIdx.x] = s_diffSquare;
   }
 }
 
-void getNearestNeighbors(int *trainLines, int *testLines, int *result, int id){
-    int *d_diffSquare;
-    int *diffSquare;
-    diffSquare = (int *)malloc(BLOCKS * sizeof(int));
-    cudaMalloc((void **)&d_diffSquare, BLOCKS * sizeof(int));
+void getNearestNeighbors(short int *trainLines, short int *testLines,unsigned short int *result, short int id){
+    unsigned int *d_diffSquare;
+    unsigned int *diffSquare;
+    diffSquare = (unsigned int *)malloc(BLOCKS * sizeof(unsigned int));
+    cudaMalloc((void **)&d_diffSquare, BLOCKS * sizeof(unsigned int));
 
     calculateDifference<<<BLOCKS, DIMENSIONS>>>(trainLines, d_diffSquare, testLines, id);
 
-    cudaMemcpy(diffSquare, d_diffSquare, BLOCKS * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(diffSquare, d_diffSquare, BLOCKS * sizeof(unsigned int), cudaMemcpyDeviceToHost);
 
     int min = INT_MAX;
     int minIndex = -1;
@@ -93,15 +90,15 @@ int main(int argc, char *argv[]) {
   readFile(trainFilename, trainLines);
 
 
-  int* d_testLines;
-  int* d_trainLines;
+  short int* d_testLines;
+  short int* d_trainLines;
 
-  int* output;
-  int lineSize = DIMENSIONS * sizeof(unsigned int);
+  unsigned short int* output;
+  int lineSize = DIMENSIONS * sizeof(short int);
   int trainLinesSize = BLOCKS * lineSize;
   int testLinesSize = TESTLINES * lineSize;
 
-  output = (int *)malloc(TESTLINES * sizeof(int));
+  output = (unsigned short int *)malloc(TESTLINES * sizeof(unsigned short int));
   cudaMalloc((void **)&d_testLines, testLinesSize);
   cudaMalloc((void **)&d_trainLines, trainLinesSize);
 
