@@ -19,6 +19,7 @@ unsigned int trainLines[BLOCKS*DIMENSIONS];
 
 string testFilename = "test.txt";
 string trainFilename = "train.txt";
+string outputFilename = "myout.txt";
 
 void parseLine(string line, int startIndex, unsigned int* arr) {
   int start=0;
@@ -45,7 +46,7 @@ void readFile(string filename, unsigned int* arr){
 }
 
 __global__
-void calculateDifference(int *trainLines, float *diffSquare, int *testLines, int id){
+void calculateDifference(int *trainLines, int *diffSquare, int *testLines, int id){
   __shared__ unsigned int s_diffSquare;
   s_diffSquare = 0;
   __syncthreads();
@@ -60,51 +61,63 @@ void calculateDifference(int *trainLines, float *diffSquare, int *testLines, int
   //
   __syncthreads();
   if (threadIdx.x % DIMENSIONS == 0) {
-    diffSquare[blockIdx.x] = sqrtf(s_diffSquare);
+    diffSquare[blockIdx.x] = s_diffSquare;
   }
+}
+
+void getNearestNeighbors(int *trainLines, int *testLines, int *result, int id){
+    int *d_diffSquare;
+    int *diffSquare;
+    diffSquare = (int *)malloc(BLOCKS * sizeof(int));
+    cudaMalloc((void **)&d_diffSquare, BLOCKS * sizeof(int));
+
+    calculateDifference<<<BLOCKS, DIMENSIONS>>>(trainLines, d_diffSquare, testLines, id);
+
+    cudaMemcpy(diffSquare, d_diffSquare, BLOCKS * sizeof(int), cudaMemcpyDeviceToHost);
+
+    int min = INT_MAX;
+    int minIndex = -1;
+    for (size_t i = 0; i < BLOCKS; i++) {
+      if (diffSquare[i] < min) {
+        min = diffSquare[i];
+        minIndex = i;
+      }
+    }
+    free(diffSquare);
+    cudaFree(d_diffSquare);
+    result[id] = minIndex;
 }
 
 int main(int argc, char *argv[]) {
   readFile(testFilename, testLines);
   readFile(trainFilename, trainLines);
 
-  const int selfIndex = 1;
 
   int* d_testLines;
   int* d_trainLines;
-  float* d_diffLines;
 
-  int* diffLines;
+  int* output;
   int lineSize = DIMENSIONS * sizeof(unsigned int);
   int trainLinesSize = BLOCKS * lineSize;
   int testLinesSize = TESTLINES * lineSize;
 
-  diffLines = (int *)malloc(BLOCKS * sizeof(float));
+  output = (int *)malloc(TESTLINES * sizeof(int));
   cudaMalloc((void **)&d_testLines, testLinesSize);
-  cudaMalloc((void **)&d_diffLines, BLOCKS * sizeof(float));
   cudaMalloc((void **)&d_trainLines, trainLinesSize);
 
   cudaMemcpy(d_testLines, testLines, testLinesSize, cudaMemcpyHostToDevice);
   cudaMemcpy(d_trainLines, trainLines, trainLinesSize, cudaMemcpyHostToDevice);
 
-  calculateDifference<<<BLOCKS, DIMENSIONS>>>(d_trainLines, d_diffLines, d_testLines, selfIndex);
-
-  cudaMemcpy(diffLines, d_diffLines, BLOCKS * sizeof(float), cudaMemcpyDeviceToHost);
-
-  float min = INT_MAX;
-  int minIndex = -1;
-  diffLines[selfIndex] = INT_MAX;
-  for (size_t i = 0; i < BLOCKS; i++) {
-    //cout <<"num: " << i << " : " << diffLines[i] << endl;
-    if (diffLines[i] < min) {
-      min = diffLines[i];
-      minIndex = i;
-    }
+  for (size_t i = 0; i < TESTLINES; i++) {
+    getNearestNeighbors(d_trainLines, d_testLines, output, i);
   }
 
-  cout<< "closest node to " << selfIndex << " is min " << min << " with index: " <<minIndex<<endl;
-
-  free(diffLines);
-  cudaFree(d_diffLines); cudaFree(d_testLines);
+  ofstream outputFile;
+  outputFile.open(outputFilename.c_str());
+  for (size_t i = 0; i < TESTLINES; i++) {
+    outputFile << output[i] << endl;
+  }
+  free(output);
+  cudaFree(d_testLines); cudaFree(d_trainLines);
   return 1;
 }
