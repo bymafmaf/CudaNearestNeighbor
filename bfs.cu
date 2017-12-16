@@ -46,43 +46,71 @@ void readFile(string filename, unsigned short int* arr){
 }
 
 __global__
-void calculateDifference(short int *trainLines,unsigned int *diffSquare, short int *testLines, short int id){
-  __shared__ unsigned int s_diffSquare;
-  s_diffSquare = 0;
+void calculateDifference(short int *trainLines, unsigned int *d_totals, unsigned int *d_min, short int *testLines, short int id){
+  __shared__ unsigned int s_total;
+  s_total = 0;
   __syncthreads();
   short int other = testLines[id*DIMENSIONS + threadIdx.x];
   short int self = trainLines[blockIdx.x*DIMENSIONS + threadIdx.x];
 
   int result = other - self;
 
-  atomicAdd(&s_diffSquare, result * result);
+  atomicAdd(&s_total, result * result);
+
   __syncthreads();
   if (threadIdx.x % DIMENSIONS == 0) {
-    diffSquare[blockIdx.x] = s_diffSquare;
+    if (blockIdx.x == id){
+      d_totals[blockIdx.x] = UINT_MAX;
+    }
+    else {
+      d_totals[blockIdx.x] = s_total;
+      atomicMin(d_min, s_total);
+    }
   }
 }
 
-void getNearestNeighbors(short int *trainLines, short int *testLines,unsigned short int *result, short int id){
-    unsigned int *d_diffSquare;
-    unsigned int *diffSquare;
-    diffSquare = (unsigned int *)malloc(BLOCKS * sizeof(unsigned int));
-    cudaMalloc((void **)&d_diffSquare, BLOCKS * sizeof(unsigned int));
+__global__
+void getIndexOf(unsigned int *d_min, unsigned int *d_totals, unsigned short int *d_minIndex, unsigned short int selfIndex){
+  if (*d_min == d_totals[blockIdx.x] && selfIndex != blockIdx.x) {
+    *d_minIndex = blockIdx.x;
+  }
+}
 
-    calculateDifference<<<BLOCKS, DIMENSIONS>>>(trainLines, d_diffSquare, testLines, id);
+void getNearestNeighbors(short int *trainLines, short int *testLines,unsigned int *result, short int id){
+  unsigned int *max;
+  max = (unsigned int*)malloc(sizeof(unsigned int));
+  *max = UINT_MAX;
 
-    cudaMemcpy(diffSquare, d_diffSquare, BLOCKS * sizeof(unsigned int), cudaMemcpyDeviceToHost);
+  unsigned short int *shrt_zero;
+  shrt_zero = (unsigned short int*)malloc(sizeof(unsigned short int));
+  *shrt_zero = 0;
 
-    int min = INT_MAX;
-    int minIndex = -1;
-    for (size_t i = 0; i < BLOCKS; i++) {
-      if (diffSquare[i] < min) {
-        min = diffSquare[i];
-        minIndex = i;
-      }
-    }
-    free(diffSquare);
-    cudaFree(d_diffSquare);
-    result[id] = minIndex;
+  unsigned int *d_min;
+  unsigned short int *minIndex;
+  unsigned short int *d_minIndex;
+  minIndex = (unsigned short int*)malloc(sizeof(unsigned short int));
+
+  cudaMalloc((void **)&d_min, sizeof(unsigned int));
+  cudaMemcpy(d_min, max, sizeof(unsigned int), cudaMemcpyHostToDevice);
+
+  cudaMalloc((void **)&d_minIndex, sizeof(unsigned short int));
+  cudaMemcpy(d_minIndex, shrt_zero, sizeof(unsigned short int), cudaMemcpyHostToDevice);
+
+  // TODO: try short int with sqrft
+  unsigned int *d_totals;
+  cudaMalloc((void **)&d_totals, BLOCKS * sizeof(unsigned int));
+
+  calculateDifference<<<BLOCKS, DIMENSIONS>>>(trainLines, d_totals, d_min, testLines, id);
+
+  getIndexOf<<<BLOCKS, 1>>>(d_min, d_totals, d_minIndex, id);
+
+  cudaMemcpy(minIndex, d_minIndex, sizeof(unsigned short int), cudaMemcpyDeviceToHost);
+
+
+
+  result[id] = *minIndex;
+  cudaFree(d_min); cudaFree(d_minIndex); cudaFree(d_totals);
+  free(max); free(shrt_zero); free(minIndex);
 }
 
 int main(int argc, char *argv[]) {
@@ -93,12 +121,12 @@ int main(int argc, char *argv[]) {
   short int* d_testLines;
   short int* d_trainLines;
 
-  unsigned short int* output;
+  unsigned int* output;
   int lineSize = DIMENSIONS * sizeof(short int);
   int trainLinesSize = BLOCKS * lineSize;
   int testLinesSize = TESTLINES * lineSize;
 
-  output = (unsigned short int *)malloc(TESTLINES * sizeof(unsigned short int));
+  output = (unsigned int *)malloc(TESTLINES * sizeof(unsigned int));
   cudaMalloc((void **)&d_testLines, testLinesSize);
   cudaMalloc((void **)&d_trainLines, trainLinesSize);
 
@@ -116,5 +144,6 @@ int main(int argc, char *argv[]) {
   }
   free(output);
   cudaFree(d_testLines); cudaFree(d_trainLines);
+  outputFile.close();
   return 1;
 }
