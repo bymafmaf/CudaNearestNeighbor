@@ -75,7 +75,7 @@ void getNearestNeighbors(short int *trainLines, short int *testLines,unsigned sh
       int min = INT_MAX;
       int minIndex = -1;
       for (size_t j = 0; j < BLOCKS; j++) {
-        if (diffSquare[j] < min) {
+        if (diffSquare[j] < min && i != j) {
           min = diffSquare[j];
           minIndex = j;
         }
