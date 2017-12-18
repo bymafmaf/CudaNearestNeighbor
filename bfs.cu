@@ -46,7 +46,7 @@ void readFile(string filename, unsigned short int* arr){
 }
 
 __global__
-void calculateDifference(short int *trainLines,unsigned short int *diffSquare, short int *testLines, short int id){
+void calculateDifference(short int *trainLines,unsigned long long int *diffSquare, short int *testLines, short int id){
   __shared__ unsigned int s_diffSquare;
   s_diffSquare = 0;
   __syncthreads();
@@ -58,29 +58,28 @@ void calculateDifference(short int *trainLines,unsigned short int *diffSquare, s
   atomicAdd(&s_diffSquare, result * result);
   __syncthreads();
   if (threadIdx.x % DIMENSIONS == 0) {
-    diffSquare[blockIdx.x] = s_diffSquare;
+    // this will contain min with its index. Since the actual number is on the left side, comparison will be done between
+    // the mins. Index will have no effect except the case where two distances are equal which will return the lower index.
+    unsigned long long int min = (((unsigned long long int) s_diffSquare) << 32) | blockIdx.x;
+    atomicMin(diffSquare, min);
   }
 }
 
 void getNearestNeighbors(short int *trainLines, short int *testLines,unsigned short int *result){
-    unsigned short int *d_diffSquare;
-    unsigned short int *diffSquare;
-    diffSquare = (unsigned short int *)malloc(BLOCKS * sizeof(unsigned short int));
-    cudaMalloc((void **)&d_diffSquare, BLOCKS * sizeof(unsigned short int));
+    unsigned long long int *d_diffSquare;
+    unsigned long long int *diffSquare;
+    diffSquare = (unsigned long long int *)malloc(sizeof(unsigned long long int));
+    cudaMalloc((void **)&d_diffSquare, sizeof(unsigned long long int));
+
+    unsigned long long int maxLongLong = ULLONG_MAX;
+
     for (size_t i = 0; i < TESTLINES; i++) {
+      cudaMemcpy(d_diffSquare, &maxLongLong, sizeof(unsigned long long int), cudaMemcpyHostToDevice);
       calculateDifference<<<BLOCKS, DIMENSIONS>>>(trainLines, d_diffSquare, testLines, i);
 
-      cudaMemcpy(diffSquare, d_diffSquare, BLOCKS * sizeof(unsigned short int), cudaMemcpyDeviceToHost);
+      cudaMemcpy(diffSquare, d_diffSquare, sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
 
-      int min = INT_MAX;
-      int minIndex = -1;
-      for (size_t j = 0; j < BLOCKS; j++) {
-        if (diffSquare[j] < min && i != j) {
-          min = diffSquare[j];
-          minIndex = j;
-        }
-      }
-      result[i] = minIndex;
+      result[i] = (unsigned int) *diffSquare;
     }
 
 
